@@ -1,3 +1,5 @@
+--modified from https://stackoverflow.com/questions/5680075/bad-format-using-hsndfile-libsndfile
+
 import qualified Sound.File.Sndfile as Snd
 import Control.Applicative
 import Foreign.Marshal.Array
@@ -11,7 +13,7 @@ frameRate :: Int
 frameRate = 16000
 
 noteLength :: Double
-noteLength = 0.01
+noteLength = 3
 
 volume = maxBound `div` 2 :: Int16
 
@@ -37,10 +39,12 @@ noteToSample freq noteLength =
     [0.0, (freq * 2 * pi / fromIntegral frameRate)..]
 
 writeWav :: [Int16] -> IO Snd.Count
-writeWav frames = openWavHandle frames >>= \h ->
-              newArray frames >>= \ptr ->
-              Snd.hPutBuf h ptr (length frames) >>= \c ->
-              return c
+writeWav frames = do
+  h <- openWavHandle frames
+  ptr <- newArray frames
+  c <- Snd.hPutBuf h ptr (length frames)
+  Snd.hClose h
+  return c
 
 makeWavFile :: IO ()
 makeWavFile = writeWav (noteToSample 440 noteLength) >>= \c ->
@@ -60,5 +64,4 @@ readFile = do
   ptr <- newArray $ replicate cnt (0 :: Int16)
   size <- Snd.hGetBuf h ptr cnt
   buffer <- peekArray cnt ptr
-  print buffer
   print size
