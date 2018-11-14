@@ -1,10 +1,31 @@
 --modified from https://stackoverflow.com/questions/5680075/bad-format-using-hsndfile-libsndfile
 
+module GenerateSamples (generateSample, Pitch, Duration) where
+
 import qualified Sound.File.Sndfile as Snd
 import Control.Applicative
-import Foreign.Marshal.Array
+import Foreign.Marshal.Array (newArray, peekArray)
 import Data.Int (Int16)
 import System.IO (hGetContents, Handle, openFile, IOMode(..))
+
+--defining some types to help with documentation
+type Pitch = Double
+type Duration = Double
+
+--for now, this doesn't return anything,
+--but it's possible that information about the number of frames might
+--become necessary
+--I intend for now only to use the standard frame rate used here
+generateSample :: Pitch -> Duration -> FilePath -> IO ()
+generateSample p d fp =
+  let
+    sample = noteToSample p d
+    info = Snd.Info (length sample) 441000 1 format 1 False
+  in do
+    h <- Snd.openFile fp Snd.WriteMode info
+    ptr <- newArray sample
+    c <- Snd.hPutBuf h ptr (length sample)
+    Snd.hClose h
 
 format :: Snd.Format
 format = Snd.Format Snd.HeaderFormatWav Snd.SampleFormatPcm16 Snd.EndianFile

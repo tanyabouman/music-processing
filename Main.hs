@@ -22,8 +22,7 @@ main = do
   generateSample 440 10 file
 
   --some kind of loop which runs the program
-  --for now, it just plays the one file which was generated
-  --how can I look at the buffer and modify it for play back????
-  playFile file
+  --look into jack or something
+  
   --whatever teardown is necessary
 
