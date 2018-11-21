@@ -29,10 +29,14 @@ Flag FastCompile
 Executable slider-project
   Main-Is: slider.hs
   Hs-Source-Dirs: .
+  other-modules:
+    PlaySine
   Build-Depends:
     base == 4.*,
     fltkhs >= 0.6.0.0,
-    text >= 1.2.2.0
+    text >= 1.2.2.0,
+    alsa-pcm,
+    storablevector
   default-language: Haskell2010
   ghc-Options: -Werror -threaded
   if impl(ghc >= 7.10) && impl(ghc < 8.0) && flag(FastCompile)
