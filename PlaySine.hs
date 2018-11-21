@@ -1,5 +1,5 @@
 -- modified from alsa-pcm example
-module PlaySine where
+module PlaySine {-(openPCM, closePCM, playSound)-} where
 
 {- |
 Demonstrate how to adapt to the parameters 'sample rate' and 'buffer size'
@@ -29,7 +29,7 @@ openPCM = do
          (\q@(sizes,_,_) -> do
              uncurry SwParam.setBufferSize sizes
              return q)
-         "plughw:1" -- this is for hp laptop; "default" works also, but gives crackles
+         "plughw:1" -- use hw:1 for hp, hw:0 for toshiba (can put this programmatic?)
    PCM.prepare h
    -- Debug.put $ "bufferTime = " ++ show bufferTime
    -- Debug.put $ "bufferSize = " ++ show bufferSize
@@ -88,8 +88,9 @@ playSound (size,rate,h) freq length =
       SVL.map ((0.99*) . sin . ((2*pi * freq / fromIntegral rate :: Float)*)) $
       SVL.iterate (SVL.chunkSize $ fromIntegral size) (1 +) 0
 
-main :: IO ()
-main =
+
+playSines :: IO ()
+playSines =
    bracket openPCM closePCM $ \(size,rate,h) -> do
    putStrLn $ "period size: " ++ show size
    putStrLn $ "sample rate: " ++ show rate
