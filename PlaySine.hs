@@ -1,4 +1,5 @@
 -- modified from alsa-pcm example
+module PlaySine where
 
 {- |
 Demonstrate how to adapt to the parameters 'sample rate' and 'buffer size'

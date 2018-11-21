@@ -1,19 +1,19 @@
-name : fltkhs-hello-world
+name : slider-project
 version : 0.0.0.1
-synopsis : Fltkhs template project
+synopsis : Fltkhs project producing alsa sound
 description:
-    Starter kit for an FLTKHS project
+    Fltkhs project producing alsa sound
 license : MIT
 license-file : LICENSE
-author : Aditya Siram
+author : Tanya Bouman
 build-type: Custom
-maintainer: aditya.siram@gmail.com
-homepage: http://github.com/deech/fltkhs-hello-world
+maintainer: boumante@mcmaster.ca
+homepage: http://github.com/tanyabouman/music-processing
 category: UI,Graphics
 cabal-version: >=2.0
 source-repository head
   type: git
-  location: http://github.com/deech/fltkhs-hello-world
+  location: http://github.com/tanyabouman/music-processing
 
 custom-setup
   setup-depends:
@@ -26,7 +26,7 @@ Flag FastCompile
    Manual: True
    Default: False
 
-Executable fltkhs-hello-world
+Executable slider-project
   Main-Is: slider.hs
   Hs-Source-Dirs: .
   Build-Depends:

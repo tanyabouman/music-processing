@@ -1,10 +1,13 @@
--- modified from https://github.com/deech/fltkhs-hello-world
+  -- modified from https://github.com/deech/fltkhs-hello-world
 
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 import qualified Graphics.UI.FLTK.LowLevel.FL as FL
 import Graphics.UI.FLTK.LowLevel.Fl_Types
 import Graphics.UI.FLTK.LowLevel.FLTKHS
+
+-- import PlaySine
+
 
 buttonCb :: Ref Button -> IO ()
 buttonCb b' = do
@@ -13,8 +16,10 @@ buttonCb b' = do
     then setLabel b' "Pause"
     else setLabel b' "Play"
 
--- playTone :: Ref HorNiceSlider -> IO ()
--- playTone s = do
+playTone :: Ref HorValueSlider -> IO ()
+playTone s = do
+  p <- getValue s
+  print p
 
 
 ui :: IO ()
@@ -34,7 +39,7 @@ ui = do
         (Rectangle (Position (X 120) (Y 10)) (Size (Width 350) (Height 30)))
         (Just "Pitch")
  setLabelsize s (FontSize 10)
- -- setCallback s 
+ setCallback s playTone
 
  end window
  showWidget window
