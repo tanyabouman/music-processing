@@ -1,9 +1,11 @@
 --modified from https://stackoverflow.com/questions/5680075/bad-format-using-hsndfile-libsndfile
 
-module GranSynth (generateSample, Pitch, Duration) where
+module GranSynth where
 
 import qualified Sound.File.Sndfile as Snd
 import Control.Applicative
+import Control.Exception (bracket, )
+import Control.Monad (replicateM_)
 import Foreign.Marshal.Array (newArray, peekArray)
 import Data.Int (Int16)
 import System.IO (hGetContents, Handle, openFile, IOMode(..))
@@ -16,7 +18,7 @@ import qualified Sound.ALSA.PCM.Parameters.Hardware as HwParam
 
 import qualified Data.StorableVector.Lazy as SVL
 import qualified Data.StorableVector.Base as SVB
-import Control.Exception (bracket, )
+
 
 import PlaySine
 
@@ -24,26 +26,8 @@ import PlaySine
 type Pitch = Double
 type Duration = Double
 
---for now, this doesn't return anything,
---but it's possible that information about the number of frames might
---become necessary
---I intend for now only to use the standard frame rate used here
-generateSample :: Pitch -> Duration -> FilePath -> IO ()
-generateSample p d fp =
-  let
-    sample = noteToSample p d
-    info = Snd.Info (length sample) 441000 1 format 1 False
-  in do
-    h <- Snd.openFile fp Snd.WriteMode info
-    ptr <- newArray sample
-    c <- Snd.hPutBuf h ptr (length sample)
-    Snd.hClose h
-
 format :: Snd.Format
 format = Snd.Format Snd.HeaderFormatWav Snd.SampleFormatPcm16 Snd.EndianFile
-
-frameRate :: Int
-frameRate = 16000
 
 --this will be a half second sample for the first try
 noteLength :: Double
@@ -66,11 +50,6 @@ openWavHandle frames =
     let info = Snd.Info (length frames) 441000 1 format 1 False
     in Snd.openFile "temp.wav" Snd.WriteMode info
 
-noteToSample :: Double -> Double -> [Int16]
-noteToSample freq noteLength =
-    take (round $ noteLength * fromIntegral frameRate) $
-    map ((round . (* fromIntegral volume)) . sin) 
-    [0.0, (freq * 2 * pi / fromIntegral frameRate)..]
 
 writeWav :: [Int16] -> IO Snd.Count
 writeWav frames = do
@@ -80,14 +59,9 @@ writeWav frames = do
   Snd.hClose h
   return c
 
-makeWavFile :: IO ()
-makeWavFile = writeWav (noteToSample 440 noteLength) >>= \c ->
-          putStrLn $ "Frames written: " ++ show c
-
-
 -- this loads the file at the given file path into a lazy vector
-loadFile :: FilePath -> IO [Int16]
-loadFile fp = do
+loadFile :: Snd.Count -> FilePath -> IO [Int16]
+loadFile nFrames fp = do
   fileh <- Snd.openFile fp Snd.ReadMode Snd.defaultInfo
 
   -- so get the information first, before assigning the size
@@ -111,32 +85,47 @@ loadFile fp = do
   -- let 
   --   svl :: SVL.Vector Int16 
   --   svl = SVL.pack SVL.defaultChunkSize $ take 88200 $ svlMaybe
-  return $ take 88200 $ buffer
+  return $ take nFrames $ buffer
 
--- envelope :: SVL.Vector Int16 -> SVL.Vector Int16
--- envelope vs = 
---   where
---     envelope' = [0,0.005..1] ++ replicate 87800 1 ++ [1,0.995..0]
+-- now the number of frames needs to be passed along as well
+-- wrap this function inside a [Int16] -> [Int16]
+linearEnvelope :: Snd.Count -> [Int16] -> [Int16]
+linearEnvelope attack v =
+  let
+    slope = 1 / (fromIntegral attack)
+    n = length v
+    decay = n - attack
+    linearEnvelope' :: Int -> Int16 -> Int16
+    linearEnvelope' i v =
+      if i < attack
+      then round ((fromIntegral i)*slope) * v
+      else if i > decay
+      then round ((fromIntegral (decay-i))*slope) * v
+      else v
+  in
+    zipWith linearEnvelope' [0..n] v
 
-
--- the first number is the index, the second the value
--- FIXME: don't hardcode the values of the slope, etc.
-envelope :: Int -> Int16 -> Int16
-envelope i v 
-  | i < 200 = round ((fromIntegral i)*(0.005)) * v
-  | i > 87800 = round ((fromIntegral (88200-i))*0.005) * v
-  | otherwise = v
+-- guassian?? envelope function
 
 
 -- load the file
 -- apply the envelope to it
 -- the envelope will probably be the same for all the grains
 -- so it will be a separate function
-accordionBassGrain :: IO [Int16]
-accordionBassGrain = loadFile "accordionlownew.wav"
+accordionBassGrain :: Snd.Count -> IO [Int16]
+accordionBassGrain frameCount = loadFile frameCount "accordionlow.wav"
 
-accordionTrebleGrain :: IO [Int16]
-accordionTrebleGrain = loadFile "accordionhighnew.wav"
+accordionTrebleGrain :: Snd.Count -> IO [Int16]
+accordionTrebleGrain frameCount = loadFile frameCount "accordionhigh.wav"
+
+data GrainContents = AccordionHigh | AccordionLow
+
+data Grain = Grain Snd.Count -- start time of the grain within the sound
+                   Snd.Count -- length of the grain used
+                   Snd.Count -- attack and delay times
+                   GrainContents   -- contents of the grain
+
+--there's a better way to store that...
 
 
 -- for some reason, this doesn't work with the 32 bit files produced by grandorgue
@@ -145,43 +134,42 @@ accordionTrebleGrain = loadFile "accordionhighnew.wav"
 main :: IO ()
 main = do
   -- do the conversation to svl here
-  treble <- SVL.pack SVL.defaultChunkSize <$> zipWith envelope [0..88200] <$> accordionTrebleGrain
+  -- treble <- SVL.pack SVL.defaultChunkSize <$> linearEnvelope 8000 <$> accordionTrebleGrain
   -- enveloped = zipWith envelope [0..88200] treble
 
-  low <- SVL.pack SVL.defaultChunkSize <$> accordionBassGrain
-  high <- SVL.pack SVL.defaultChunkSize <$> accordionTrebleGrain
+  low <- SVL.pack SVL.defaultChunkSize <$> accordionBassGrain 8000
+  high <- SVL.pack SVL.defaultChunkSize <$> accordionTrebleGrain 8000
 
+  envelopedh <- linearEnvelope 20 <$> accordionTrebleGrain 80
+  let sequenced = SVL.pack SVL.defaultChunkSize $ overlapSequence 20 1000 envelopedh
 
   bracket openPCM closePCM $ \(size,rate,h) -> do
     print rate
     print size
-    mapM_ (write h) $ 
-      SVL.chunks high
-    -- mapM_ (write h) $ 
-    --   SVL.chunks low
-    mapM_ (write h) $ 
-      SVL.chunks high
+    -- replicateM_ 10 $ playBuffer h high
+    -- playBuffer h low
+    -- replicateM_ 10 $ playBuffer h envelopedh
+    playBuffer h sequenced
 
   print "done"
 
-filter :: Int -> Float
-filter i 
-  | i < 200 = (fromIntegral i)*0.005
-  | i > 87800 = (fromIntegral (87800 - i))*0.005
-  | otherwise = fromIntegral i
+-- only call this inside the bracket of openPCM and closePCM
+-- playBuffer :: [Int16] -> IO ()
+playBuffer h v = do
+  mapM_ (write h) $ SVL.chunks v
 
+
+overlapSequence :: Snd.Count -> Int -> [Int16] -> [Int16]
+overlapSequence o n v = foldr (overlap o) [] (replicate n v)
+
+overlap :: Snd.Count -> [Int16] -> [Int16] -> [Int16]
+overlap n v1 v2 =
+  let
+    (first,end) = splitAt (length v1 - n) v1
+    (begin,last) = splitAt n v2
+  in
+    first ++ zipWith (+) begin end ++ last
 
 readHandle :: IO Snd.Handle
 readHandle =
   Snd.openFile "temp.wav" Snd.ReadMode Snd.defaultInfo
-
-readFile :: IO ()
-readFile = do
-  h <- readHandle
-  let cnt = round $ noteLength * fromIntegral frameRate
-  ptr <- newArray $ replicate cnt (0 :: Int16)
-  size <- Snd.hGetBuf h ptr cnt
-  buffer <- peekArray cnt ptr
-  print size
-
-
