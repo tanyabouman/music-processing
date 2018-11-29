@@ -8,6 +8,8 @@ import Control.Exception (bracket, )
 import Control.Monad (replicateM_)
 import Foreign.Marshal.Array (newArray, peekArray)
 import Data.Int (Int16)
+import Data.List (uncons)
+import Data.Maybe (catMaybes)
 import System.IO (hGetContents, Handle, openFile, IOMode(..))
 
 import qualified Sound.ALSA.PCM.Node.ALSA as PCM
@@ -120,12 +122,33 @@ accordionTrebleGrain frameCount = loadFile frameCount "accordionhigh.wav"
 
 data GrainContents = AccordionHigh | AccordionLow
 
-data Grain = Grain Snd.Count -- start time of the grain within the sound
-                   Snd.Count -- length of the grain used
-                   Snd.Count -- attack and delay times
-                   GrainContents   -- contents of the grain
+grainContent :: GrainContents -> [Int16]
+grainContent AccordionHigh = []
+grainContent AccordionLow = []
 
---there's a better way to store that...
+data Grain
+  = Grain {startTime :: Snd.Count,
+           grainLength :: Snd.Count,
+           -- attackLength :: Snd.Count, -- this makes this complicated
+           grain :: GrainContents}
+
+
+-- list the grains
+
+-- order grains by the start time
+-- orderBy startTime
+
+-- add together
+
+-- this is entirely unreadable.  but it should work
+mergeGrains :: [Grain] -> [[Int16]] -> Snd.Count  -> [Int16]
+mergeGrains (g:gs) existingGrains currentTime =
+  let
+    (currents, futures) = unzip $ catMaybes $ map uncons existingGrains
+  in
+    if (startTime g - 1) > currentTime
+    then sum currents : mergeGrains (g:gs) futures (currentTime-1)
+    else mergeGrains gs (grainContent (grain g) : futures) currentTime
 
 
 -- for some reason, this doesn't work with the 32 bit files produced by grandorgue
