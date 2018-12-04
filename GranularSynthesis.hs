@@ -31,7 +31,8 @@ type Duration = Double
 
 -- for some reason, this doesn't work with the 32 bit files produced by grandorgue
 -- make 16 bit files with audacity
--- the pitch is shifted.  Maybe check the frame rate (or just ignore it...)
+-- make sure to use mono tracks, since stereo changes the pitch
+-- (and this doesn't require stereo anyways)
 main :: IO ()
 main = do
   -- do the conversation to svl here
@@ -40,6 +41,7 @@ main = do
 
   low <- SVL.pack SVL.defaultChunkSize <$> accordionBassGrain 8000
   high <- SVL.pack SVL.defaultChunkSize <$> accordionTrebleGrain 8000
+  flute <- SVL.pack SVL.defaultChunkSize <$> fluteGrain 8000
 
   envelopedh <- linearEnvelope 20 <$> accordionTrebleGrain 80
   let sequenced = SVL.pack SVL.defaultChunkSize $ overlapSequence 20 1000 envelopedh
@@ -47,10 +49,13 @@ main = do
   bracket openPCM closePCM $ \(size,rate,h) -> do
     print rate
     print size
-    -- replicateM_ 10 $ playBuffer h high
+    replicateM_ 10 $ playBuffer h high
+    replicateM_ 10 $ playBuffer h flute
+    replicateM_ 10 $ playBuffer h low
+
     -- playBuffer h low
     -- replicateM_ 10 $ playBuffer h envelopedh
-    playBuffer h sequenced
+    -- playBuffer h sequenced
 
   print "done"
 

@@ -1,6 +1,12 @@
 --modified from https://stackoverflow.com/questions/5680075/bad-format-using-hsndfile-libsndfile
 
-module GranSynth where
+module Grains ( Grain
+              , linearEnvelope
+              , accordionBassGrain
+              , accordionTrebleGrain
+              , fluteGrain
+              , overlapSequence
+              ) where
 
 import qualified Sound.File.Sndfile as Snd
 import Control.Applicative
@@ -21,21 +27,9 @@ import qualified Sound.ALSA.PCM.Parameters.Hardware as HwParam
 import qualified Data.StorableVector.Lazy as SVL
 import qualified Data.StorableVector.Base as SVB
 
-
-import PlaySine
-
 --defining some types to help with documentation
 type Pitch = Double
 type Duration = Double
-
-format :: Snd.Format
-format = Snd.Format Snd.HeaderFormatWav Snd.SampleFormatPcm16 Snd.EndianFile
-
---this will be a half second sample for the first try
-noteLength :: Double
-noteLength = 5
-
-volume = maxBound `div` 2 :: Int16
 
 {-
 data Snd.Info
@@ -46,20 +40,6 @@ data Snd.Info
               Snd.sections :: Int,
               Snd.seekable :: Bool}
 -}
-
-openWavHandle :: [Int16] -> IO Snd.Handle
-openWavHandle frames =
-    let info = Snd.Info (length frames) 441000 1 format 1 False
-    in Snd.openFile "temp.wav" Snd.WriteMode info
-
-
-writeWav :: [Int16] -> IO Snd.Count
-writeWav frames = do
-  h <- openWavHandle frames
-  ptr <- newArray frames
-  c <- Snd.hPutBuf h ptr (length frames)
-  Snd.hClose h
-  return c
 
 -- this loads the file at the given file path into a lazy vector
 loadFile :: Snd.Count -> FilePath -> IO [Int16]
@@ -120,6 +100,9 @@ accordionBassGrain frameCount = loadFile frameCount "accordionlow.wav"
 accordionTrebleGrain :: Snd.Count -> IO [Int16]
 accordionTrebleGrain frameCount = loadFile frameCount "accordionhigh.wav"
 
+fluteGrain :: Snd.Count -> IO [Int16]
+fluteGrain frameCount = loadFile frameCount "flute.wav"
+
 data GrainContents = AccordionHigh | AccordionLow
 
 grainContent :: GrainContents -> [Int16]
@@ -150,36 +133,6 @@ mergeGrains (g:gs) existingGrains currentTime =
     then sum currents : mergeGrains (g:gs) futures (currentTime-1)
     else mergeGrains gs (grainContent (grain g) : futures) currentTime
 
-
--- for some reason, this doesn't work with the 32 bit files produced by grandorgue
--- make 16 bit files with audacity
--- the pitch is shifted.  Maybe check the frame rate (or just ignore it...)
-main :: IO ()
-main = do
-  -- do the conversation to svl here
-  -- treble <- SVL.pack SVL.defaultChunkSize <$> linearEnvelope 8000 <$> accordionTrebleGrain
-  -- enveloped = zipWith envelope [0..88200] treble
-
-  low <- SVL.pack SVL.defaultChunkSize <$> accordionBassGrain 8000
-  high <- SVL.pack SVL.defaultChunkSize <$> accordionTrebleGrain 8000
-
-  envelopedh <- linearEnvelope 20 <$> accordionTrebleGrain 80
-  let sequenced = SVL.pack SVL.defaultChunkSize $ overlapSequence 20 1000 envelopedh
-
-  bracket openPCM closePCM $ \(size,rate,h) -> do
-    print rate
-    print size
-    -- replicateM_ 10 $ playBuffer h high
-    -- playBuffer h low
-    -- replicateM_ 10 $ playBuffer h envelopedh
-    playBuffer h sequenced
-
-  print "done"
-
--- only call this inside the bracket of openPCM and closePCM
--- playBuffer :: [Int16] -> IO ()
-playBuffer h v = do
-  mapM_ (write h) $ SVL.chunks v
 
 
 overlapSequence :: Snd.Count -> Int -> [Int16] -> [Int16]
