@@ -2,6 +2,8 @@
 
 module Grains ( Grain(Grain,startTime, grainLength, contents)
               , linearEnvelope
+              , expAttackEnvelope
+              , linearAttack
               , accordionBassGrain
               , accordionTrebleGrain
               , fluteGrain
@@ -86,8 +88,45 @@ linearEnvelope attack v =
   in
     zipWith linearEnvelope' [0..n] v
 
--- guassian?? envelope function
+linearAttack :: Snd.Count -> [Int16] -> [Int16]
+linearAttack attack v =
+  let
+    slope = 1 / (fromIntegral attack)
+    n = length v
+    linearAttack' :: Int -> Int16 -> Int16
+    linearAttack' i v =
+      if i < attack
+      then round ((fromIntegral i)*slope * fromIntegral v)
+      else v
+  in
+    zipWith linearAttack' [0..] v
 
+-- starts the decay at the beginning of the given sample
+linearDecay :: Snd.Count -> [Int16] -> [Int16]
+linearDecay decay v =
+  let
+    slope = 1 / (fromIntegral decay)
+    linearDecay' :: Int -> Int16 -> Int16
+    linearDecay' i v =
+      if i < decay
+      then round ((fromIntegral i)*slope * fromIntegral v)
+      else v
+  in
+    zipWith linearDecay' [0..] v
+
+-- exponential attack
+-- only does the attack portion, because we aren't really concerned about the rest
+expAttackEnvelope :: Snd.Count -> [Int16] -> [Int16]
+expAttackEnvelope attackLength v =
+  let
+    scalar = 1 / (exp (fromIntegral attackLength))
+    attackEnvelope :: Int -> Int16 -> Int16
+    attackEnvelope i v =
+      if i < attackLength
+      then round (fromIntegral v * scalar * exp (fromIntegral i))
+      else v
+  in
+    zipWith attackEnvelope [0..] v
 
 -- load the file, based on the number of frames necessary
 accordionBassGrain :: Snd.Count -> IO [Int16]
