@@ -1,11 +1,13 @@
 --modified from https://stackoverflow.com/questions/5680075/bad-format-using-hsndfile-libsndfile
 
-module Grains ( Grain
+module Grains ( Grain(Grain,startTime, grainLength, contents)
               , linearEnvelope
               , accordionBassGrain
               , accordionTrebleGrain
               , fluteGrain
               , overlapSequence
+              , overlap
+              , mergeGrains
               ) where
 
 import qualified Sound.File.Sndfile as Snd
@@ -64,9 +66,6 @@ loadFile nFrames fp = do
   -- peek works for any storage, so hopefully this can work
   buffer <- peekArray frames ptr
   -- print svlMaybe
-  -- let 
-  --   svl :: SVL.Vector Int16 
-  --   svl = SVL.pack SVL.defaultChunkSize $ take 88200 $ svlMaybe
   return $ take nFrames $ buffer
 
 -- now the number of frames needs to be passed along as well
@@ -80,9 +79,9 @@ linearEnvelope attack v =
     linearEnvelope' :: Int -> Int16 -> Int16
     linearEnvelope' i v =
       if i < attack
-      then round ((fromIntegral i)*slope) * v
+      then round ((fromIntegral i)*slope * fromIntegral v)
       else if i > decay
-      then round ((fromIntegral (decay-i))*slope) * v
+      then round ((fromIntegral (decay-i))*slope * fromIntegral v) + v
       else v
   in
     zipWith linearEnvelope' [0..n] v
@@ -90,10 +89,7 @@ linearEnvelope attack v =
 -- guassian?? envelope function
 
 
--- load the file
--- apply the envelope to it
--- the envelope will probably be the same for all the grains
--- so it will be a separate function
+-- load the file, based on the number of frames necessary
 accordionBassGrain :: Snd.Count -> IO [Int16]
 accordionBassGrain frameCount = loadFile frameCount "accordionlow.wav"
 
@@ -113,8 +109,9 @@ data Grain
   = Grain {startTime :: Snd.Count,
            grainLength :: Snd.Count,
            -- attackLength :: Snd.Count, -- this makes this complicated
-           grain :: GrainContents}
-
+           contents :: [Int16]}
+           -- grain :: GrainContents}
+           deriving (Eq, Show)
 
 -- list the grains
 
@@ -122,8 +119,7 @@ data Grain
 -- orderBy startTime
 
 -- add together
-
--- this is entirely unreadable.  but it should work
+-- (this might be better that what's below??? except it doesn't have all the possibilities)
 mergeGrains :: [Grain] -> [[Int16]] -> Snd.Count  -> [Int16]
 mergeGrains (g:gs) existingGrains currentTime =
   let
@@ -131,12 +127,80 @@ mergeGrains (g:gs) existingGrains currentTime =
   in
     if (startTime g - 1) > currentTime
     then sum currents : mergeGrains (g:gs) futures (currentTime-1)
-    else mergeGrains gs (grainContent (grain g) : futures) currentTime
+    else mergeGrains gs (contents g : futures) currentTime
 
 
 
 overlapSequence :: Snd.Count -> Int -> [Int16] -> [Int16]
 overlapSequence o n v = foldr (overlap o) [] (replicate n v)
+
+-- this is the correct function, and it doesn't really matter how it works on the
+-- inside.  It just needs to work for all cases. and not be slow
+-- mergeGrains :: Grain -> Grain -> Grain
+-- mergeGrains g1 g2
+--   | startTime g1 + grainLength g1 <= startTime g2 =
+--     let
+--       padding = startTime g2 - (startTime g1 + grainLength g1)
+--       newContents = contents g1 ++ replicate padding 0 ++ contents g2
+--       newLength = grainLength g1 + padding + grainLength g2
+--     in
+--       Grain {startTime=startTime g1, grainLength=newLength, contents=newContents}
+--   | startTime g2 + grainLength g2 <= startTime g1 =
+--     let
+--       padding = startTime g1 - (startTime g2 + grainLength g2)
+--       newContents = contents g2 ++ replicate padding 0 ++ contents g1
+--       newLength = grainLength g2 + padding + grainLength g1
+--     in
+--       Grain {startTime=startTime g2, grainLength=newLength, contents=newContents}
+--   | startTime g1 < startTime g2 =
+--     let
+--       (first,rest) = splitAt (startTime g2) (contents g1)
+--     in
+--       if startTime g1 + grainLength g1 < startTime g2 + grainLength g2
+--         then
+--           let
+--             (second, third) = splitAt (startTime g1 + grainLength g1) (contents g2)
+--             newContents = first ++ zipWith (+) second rest ++ third
+--           in
+--             Grain {startTime=startTime g1, grainLength = length newContents, contents=newContents}
+--         else
+--           let
+--             (second, third) = splitAt (grainLength g2) rest
+--             newContents = first ++ zipWith (+) second (contents g2) ++ third
+--           in Grain {startTime=startTime g1, grainLength=length newContents, contents=newContents}
+--   | otherwise =
+--     let
+--       (first,rest) = splitAt (startTime g1) (contents g2)
+--     in
+--       if startTime g2 + grainLength g2 < startTime g1 + grainLength g2
+--         then
+--           let
+--             (second,third) = splitAt (startTime g2 + grainLength g2) (contents g1)
+--             newContents = first ++ zipWith (+) second rest ++ third
+--           in
+--             Grain {startTime=startTime g2, grainLength=length newContents, contents=newContents}
+--         else
+--           let
+--             (second,third) = splitAt (grainLength g1) rest
+--             newContents = first ++ zipWith (+) second (contents g1) ++ third
+--           in
+--             Grain {startTime=startTime g2, grainLength=length newContents, contents=newContents}
+
+
+
+
+-- takes two samples and puts them on top of each other, separated by an amount
+-- assumes that the two grains are equal length; this could be bad
+-- overlap' :: Snd.Count -> [Int16] -> [Int16] -> [Int16] 
+-- overlap' offset v1 v2 =
+--   if offset == 0
+--   then zipWith (+) v1 v2
+--   else if offset > 0
+--   then
+--     let
+--       (first, rest) = splitAt offset v1
+--     in
+--       first ++ zipWith (+)
 
 overlap :: Snd.Count -> [Int16] -> [Int16] -> [Int16]
 overlap n v1 v2 =
