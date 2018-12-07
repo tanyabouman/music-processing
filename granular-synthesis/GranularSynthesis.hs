@@ -90,14 +90,6 @@ main = do
 playBuffer' h v = do
   mapM_ (write h) $ SVL.chunks v
 
-playBuffer :: IO [Int16] -> IO ()
-playBuffer b = do
-  svl <- svlp <$> b
-  bracket openPCM closePCM $ \(size,rate,h) -> do
-    mapM_ (write h) $ SVL.chunks svl
-
-svlp = SVL.pack SVL.defaultChunkSize
-
 -- for demonstration of the grains that I'm using
 playPlainGrain :: (Snd.Count -> IO [Int16]) -> IO ()
 playPlainGrain grain = do

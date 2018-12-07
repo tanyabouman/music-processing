@@ -27,15 +27,21 @@ Flag FastCompile
    Default: False
 
 Executable fft-processing
-  Main-Is: FFTProcessing.hs
+  Main-Is: FFTProcessing.lhs
   Hs-Source-Dirs: .
   other-modules:
-    
+    PlaySine
   Build-Depends:
     base == 4.*,
     fltkhs >= 0.6.0.0,
     text >= 1.2.2.0,
     alsa-pcm,
+    carray,
+    pure-fft,
+    Chart-cairo,
+    Chart,
+    hsndfile,
+    array,
     storablevector
   default-language: Haskell2010
   ghc-Options: -Werror -threaded

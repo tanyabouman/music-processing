@@ -10,12 +10,20 @@ import qualified Sound.ALSA.PCM.Parameters.Software as SwParam
 import qualified Sound.ALSA.PCM.Parameters.Hardware as HwParam
 
 -- import qualified Sound.ALSA.PCM.Debug as Debug
-
+import Data.Int (Int16)
 import qualified Data.StorableVector.Lazy as SVL
 import qualified Data.StorableVector.Base as SVB
 
 import Control.Exception (bracket, )
 
+
+
+-- helper function that was useful in GranularSynthesis
+playBuffer :: IO [Int16] -> IO ()
+playBuffer b = do
+  svl <- SVL.pack SVL.defaultChunkSize <$> b
+  bracket openPCM closePCM $ \(size,rate,h) -> do
+    mapM_ (write h) $ SVL.chunks svl
 
 
 openPCM ::
