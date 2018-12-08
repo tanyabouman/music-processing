@@ -35,7 +35,7 @@
 \begin{comment}
 \begin{code}
 {-# LANGUAGE OverloadedStrings #-}
-module Main where
+module FFTProcessing where
 -- import qualified Graphics.UI.FLTK.LowLevel.FL as FL
 -- import Graphics.UI.FLTK.LowLevel.Fl_Types
 -- import Graphics.UI.FLTK.LowLevel.FLTKHS
@@ -48,10 +48,13 @@ import Control.Monad (forever)
 -- import Data.Array.CArray
 import Data.Complex
 import qualified Data.Array.IArray as Arr
+import Data.List (elemIndex)
+import Data.Maybe (fromMaybe)
 -- import Math.FFT
 import Numeric.FFT
 
 import PlaySine -- (openPCM, closePCM, playSound, playBuffer)
+import Plotting
 
 import Graphics.Rendering.Chart
 import Data.Colour
@@ -123,62 +126,155 @@ square x =
   if 0.5 > snd (properFraction $ x/(2*pi))
     then 1
     else -1
+\end{code}
+
+This function does all of the processing to make the fft happen.
+Since all of the inputs are real values, we just take in doubles,
+and only keep the first half of the results, since the rest is
+a mirror image.
+\begin{code}
+myDFT :: [Double] -> [Double]
+myDFT xs =
+  let
+    complex = map (:+ 0) xs
+    halfdft = take ((length xs) `div` 2) $ dft complex
+    ans = map magnitude halfdft
+  in
+    ans
+\end{code}
 
 
-setLinesBlue :: PlotLines a b -> PlotLines a b
-setLinesBlue = plot_lines_style  . line_color .~ opaque blue
+Given the (half) Fourier transform of a signal, we look for the peak frequency.
+This also depends on the globally defined frame rate, 44100, since the frame
+rate determines the value of the Nyquist frequency.
+\begin{code}
+findFrequency :: [Double] -> Double
+findFrequency ft =
+  let
+    l = length ft
+    m = maximum ft
+    -- lookup the index of the maximum
+    -- using Eq on doubles is OK here, because there is no calculation
+    ix = fromMaybe 0 $ elemIndex m ft
+    (ix1,ix2,ix3)
+      | ix == 0 = (0,1,2)
+      | ix == l-1 = (l-3,l-2,l-1)
+      | otherwise = (ix-1,ix,ix+1)
+    (x1,x2,x3) = (fromIntegral ix1, fromIntegral ix2, fromIntegral ix3)
+    (y1,y2,y3) = (ft !! ix1, ft !! ix2, ft !! ix3)
+    -- there are now three points for the interpolation
+    p x = (x*x - (x2+x3)*x + x2*x3)*y1/2
+        - (x*x - (x1+x3)*x + x1*x3)*y2
+        + (x*x - (x1+x2)*x + x1*x2)*y3/2
+    -- find the peak a modified binary search
+    search p low high =
+      let mid = (low+high)/2
+      in
+        if low + 1e-12 > high
+        then mid
+        else if p low < p high
+        then search p mid high
+        else search p low mid
+    maxIdx = search p x1 x3
+  in
+    maxIdx * frameRate / (2*(fromIntegral l))
 
-chart = toRenderable layout
-  where
-    am :: Double -> Double
-    am x = (sin (x*3.14159/45) + 1) / 2 * (sin (x*3.14159/5))
-
-    sinusoid1 = plot_lines_values .~ [[ (x,(am x)) | x <- [0,(0.5)..400]]]
-              $ plot_lines_style  . line_color .~ opaque blue
-              $ plot_lines_title .~ "am"
-              $ def
-
-    sinusoid2 = plot_points_style .~ filledCircles 2 (opaque red)
-              $ plot_points_values .~ [ (x,(am x)) | x <- [0,7..400]]
-              $ plot_points_title .~ "am points"
-              $ def
-
-    layout = layout_title .~ "Amplitude Modulation"
-           $ layout_plots .~ [toPlot sinusoid1,
-                              toPlot sinusoid2]
-           $ def
-
-exampleChart1 = renderableToFile def "example1_big.png" chart
 
 
-sinChart = toRenderable layout
-  where
-    wave = plot_points_style .~ filledCircles 2 (opaque red)
-              $ plot_points_values .~ (zip [(0::Double)..] (waveSample 1 sin 440 2000))
-              $ plot_points_title .~ "sin"
-              $ def
-    layout = layout_title .~ "Sine Wave"
-           $ layout_plots .~ [toPlot wave]
-           $ def
+sinFFT = myDFT $ waveSample 1 sin 440 2000
 
-sineChartImg = renderableToFile def "sine.png" sinChart
+squareFFT = myDFT $ waveSample 1 square 440 2000
 
-plot title d = renderableToFile def (title ++ ".png") chart
-  where
-    chart = toRenderable layout
-    wave = plot_points_style .~ filledCircles 2 (opaque red)
-              $ plot_points_values .~ (zip [(0::Double)..] d)
-              $ plot_points_title .~ title
-              $ def
-    layout = layout_title .~ title
-           $ layout_plots .~ [toPlot wave]
-           $ def
+inputFreq = [200,400..24000]
+measuredFreq f = findFrequency $ myDFT $ waveSample 1 sin f 2000
+measurements = map measuredFreq inputFreq
 
-sinFFT = map magnitude $ dft $ map (:+ 0) $ waveSample 1 sin 440 2000
+measurementChart = plot "Measured Frequencies" inputFreq measurements
+differenceChart = plot "Measured Frequency Differences" inputFreq (zipWith (-) inputFreq measurements)
 
-squareFFT = map imagPart $ dft $ map (:+ 0) $ waveSample 1 square 440 2000
 
-main = print "Hello World!"
+sinChart = plot "Sine" [(0::Double)..] (waveSample 1 sin 440 2000)
+
+
+\end{code}
+Show that the frequencies work for the most part, except past Nyquist
+Show the calculated frequency differences
+
+
+On to the low pass filter.
+
+Pick n to be 2 for now.  Why not?
+Is this supposed to be a subtraction???
+What is going on?
+\begin{code}
+
+frequencyBins = [0,frameRate/2000..]
+
+
+g s = 1 / sqrt (1+s**2)
+
+-- this does the filter on the sine and plots it.
+-- not that interesting, since it's only a sine
+-- plot "filteredSin330g10" frequencyBins $ zipWith (*) sinFFT $ take 100 (map (g . (/330)) frequencyBins)
+
+--putting all the low pass things together
+lowPass :: Double -> [Double] -> [Double]
+lowPass cutoff input = zipWith (*) input $ map (g . (/cutoff)) frequencyBins
+
+
+
+-- interesting results
+-- plot "Hann" [(0::Double)..] $ hannWindow 1200 $ waveSample 1 sin 440 2000
+-- multiply the time domain with a Hann window
+hannWindow :: Double -> [Double] -> [Double]
+hannWindow windowSize input =
+  let
+    hann n = 0.5 * (1 - cos(2*pi*n/(windowSize-1)))
+  in
+    zipWith (*) input $ map hann frequencyBins
+
+
+
+-- time domain and fast convolution
+
+
+-- well, this is interesting, so don't apply the magnitude before doing the inverse
+
+-- this gives back the original, but with twice as much information
+-- plot "SineFFTed" [(0::Double)..] $ map magnitude $ idft $ dft $ map (:+0) $ waveSample 1 sin 440 2000
+-- *Main> plot "SineFFTedhalf" [(0::Double)..] $ map magnitude $ idft $ map (:+ 0) $ myDFT $ waveSample 1 sin 440 2000
+
+-- also weird
+-- plot "SineFFTed" [(0::Double)..] $ map magnitude $ idft $ take 1000 $ dft $ map (:+0) $ waveSample 1 sin 440 2000
+
+
+-- phase shifted, but at least reasonable
+-- try this with a square wave to check that it reasonably works out
+-- plot "SineFFTedreal" [(0::Double)..] $ map realPart $ idft $ dft $ map (:+0) $ waveSample 1 sin 440 2000
+
+-- basically nonsense, and reasonably zero, which makes sense, but the patterns in it probably produced the strange magnitude output
+-- plot "SineFFTedreal" [(0::Double)..] $ map realPart $ idft $ dft $ map (:+0) $ waveSample 1 sin 440 2000
+
+
+
+-- takes a function which represents the convolution and the input
+-- the convolution function operations on the frequency themselves
+-- as listed above in the frequencyBins
+fastConvolution :: (Double -> Double) -> [Double] -> [Double]
+fastConvolution conv input =
+  let
+    ffted = dft $ map (:+0) $ input
+    conved = zipWith mult ffted $ map conv frequencyBins
+    iffted = map realPart $ idft conved
+  in
+    iffted
+
+
+mult :: Complex Double -> Double -> Complex Double
+mult (y :+ z) x = x*y :+ x*z
+
+
+-- main = print "Hello World!"
 \end{code}
 
 \end{document}

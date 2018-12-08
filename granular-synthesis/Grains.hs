@@ -45,7 +45,9 @@ data Snd.Info
               Snd.seekable :: Bool}
 -}
 
--- this loads the file at the given file path into a lazy vector
+-- this loads the file at the given file path into a list
+-- only the number of frames specified are return, since the
+-- grain itself might be smaller than the original sample
 loadFile :: Snd.Count -> FilePath -> IO [Int16]
 loadFile nFrames fp = do
   fileh <- Snd.openFile fp Snd.ReadMode Snd.defaultInfo
