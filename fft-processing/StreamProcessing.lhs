@@ -79,7 +79,7 @@ bufferSize = 1024
 main :: IO ()
 main = do
   -- I think this opens a sine wave file...
-  fileh <- Snd.openFile "test.wav" Snd.ReadMode Snd.defaultInfo
+  fileh <- Snd.openFile "test2.wav" Snd.ReadMode Snd.defaultInfo
 
 
   -- this shouldn't be necessary, as long as the crashing doesn't happen with ghc
@@ -99,28 +99,44 @@ main = do
 --   -- if I understand correctly, closing the file when it wasn't finished
 --   -- reading was part of the problem
 --   -- don't actually just return the list of [Int16]
-  processFile fileh -- frames
+  processFile fileh $ replicate (bufferSize `div` 2) 0 -- frames
   Snd.hClose fileh
 
 -- main = print "hello"
 
 
--- since main has the file pointer, put the rest in a different function
 processFile h = do
-  ptr <- newArray $ replicate bufferSize (0::Int16)
-  size <- Snd.hGetBuf h ptr bufferSize
+  let halfBuffer = bufferSize `div` 2
+  ptr <- newArray $ replicate halfBuffer (0::Int16)
+  size <- Snd.hGetBuf h ptr halfBuffer
+
+  let processFile' h oldBuffer = do (
+    size <- Snd.hGetBuf h ptr halfBuffer
+
+    print "iterating"
+    newBuffer <- peekArray halfBuffer ptr
+    let buffer = oldBuffer ++ newBuffer
+
+    -- process the buffer
+
+    print buffer
+  )
 
   print "iterating"
-  buffer <- peekArray bufferSize ptr
-  -- process the buffer
+  initBuffer <- peekArray halfBuffer ptr
+  processFile' h initBuffer
+
+
+-- since main gets the file pointer, put the rest in a different function
+-- nice so far, but the buffers need to overlap...hmmmm
+-- the oldBuffer is the second half of the previous buffer
   
-  print buffer
 
 
-  if size < bufferSize
+  if size < halfBuffer
     then do
       print "done"
-    else processFile h
+    else processFile h newBuffer
 
 \end{code}
 

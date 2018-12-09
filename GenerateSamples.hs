@@ -20,7 +20,7 @@ generateSample :: Pitch -> Duration -> FilePath -> IO ()
 generateSample p d fp =
   let
     sample = noteToSample p d
-    info = Snd.Info (length sample) 441000 1 format 1 False
+    info = Snd.Info (length sample) 44100 1 format 1 False
   in do
     h <- Snd.openFile fp Snd.WriteMode info
     ptr <- newArray sample
@@ -31,7 +31,7 @@ format :: Snd.Format
 format = Snd.Format Snd.HeaderFormatWav Snd.SampleFormatPcm16 Snd.EndianFile
 
 frameRate :: Int
-frameRate = 16000
+frameRate = 44100
 
 noteLength :: Double
 noteLength = 3
@@ -50,7 +50,7 @@ data Snd.Info
 
 openWavHandle :: [Int16] -> IO Snd.Handle
 openWavHandle frames =
-    let info = Snd.Info (length frames) 441000 1 format 1 False
+    let info = Snd.Info (length frames) 44100 1 format 1 False
     in Snd.openFile "temp.wav" Snd.WriteMode info
 
 noteToSample :: Double -> Double -> [Int16]
