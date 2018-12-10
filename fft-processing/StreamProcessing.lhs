@@ -46,7 +46,7 @@ import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar (readMVar, swapMVar, newMVar, MVar)
 import Control.Monad (forever)
 -- import Data.Array.CArray
-import Foreign.Marshal.Array (newArray, peekArray)
+import Foreign.Marshal.Array (newArray, peekArray, pokeArray)
 import Data.Complex
 import qualified Data.Array.IArray as Arr
 import Data.List (elemIndex)
@@ -56,8 +56,8 @@ import Data.Int (Int16)
 import Numeric.FFT
 
 import PlaySine -- (openPCM, closePCM, playSound, playBuffer)
-import Plotting
-import FFTProcessing
+-- import Plotting
+-- import FFTProcessing
 
 import Graphics.Rendering.Chart
 import Data.Colour
@@ -74,69 +74,79 @@ import Control.Lens
 
 bufferSize = 1024
 
+format :: Snd.Format
+format = Snd.Format Snd.HeaderFormatWav Snd.SampleFormatPcm16 Snd.EndianFile
 
--- use hGetBuffer ... yeah, didn't this cause problems earlier???
+
+
+-- use hGetBuffer ..., didn't this cause problems earlier??? only in ghci, not ghc
 main :: IO ()
 main = do
   -- I think this opens a sine wave file...
-  fileh <- Snd.openFile "test2.wav" Snd.ReadMode Snd.defaultInfo
-
+  -- open both the input and the output file
+  inputH <- Snd.openFile "test1.wav" Snd.ReadMode Snd.defaultInfo
+  -- hopefully defaultinfo is OK for this????
+  let info = Snd.Info (bufferSize `div` 2) 44100 1 format 1 False
+  outputH <- Snd.openFile "test3.wav" Snd.WriteMode info
 
   -- this shouldn't be necessary, as long as the crashing doesn't happen with ghc
   let 
-    info = Snd.hInfo fileh
+    info = Snd.hInfo inputH
     frames = Snd.frames info
   print frames
 
-  -- this stuff needs to happen in some kind of a loop
---   ptr <- newArray $ replicate 1024 0 -- (0 :: Int)
---   ptrMaybe <- peekArray frames ptr
---   -- print ptrMaybe
---   -- read <- Snd.readFile "accordionlow"
-
---   size <- Snd.hGetBuf fileh ptr (frames)
-
---   -- if I understand correctly, closing the file when it wasn't finished
---   -- reading was part of the problem
---   -- don't actually just return the list of [Int16]
-  processFile fileh $ replicate (bufferSize `div` 2) 0 -- frames
-  Snd.hClose fileh
+  processFile inputH outputH calculation
+  Snd.hClose inputH
+  Snd.hClose outputH
 
 -- main = print "hello"
 
+-- this should be passed through the processFile
+-- could be a Hann window, fft, whatever
+calculation :: [Int16] -> [Int16]
+calculation = id
 
-processFile h = do
+
+processFile inputH outputH calculation = do
   let halfBuffer = bufferSize `div` 2
   ptr <- newArray $ replicate halfBuffer (0::Int16)
-  size <- Snd.hGetBuf h ptr halfBuffer
+  size <- Snd.hGetBuf inputH ptr halfBuffer
 
-  let processFile' h oldBuffer = do (
-    size <- Snd.hGetBuf h ptr halfBuffer
+  let
+    processFile' oldBuffer oldBufferP = do
+      size <- Snd.hGetBuf inputH ptr halfBuffer
 
-    print "iterating"
-    newBuffer <- peekArray halfBuffer ptr
-    let buffer = oldBuffer ++ newBuffer
+      print "iterating"
+      newBuffer <- peekArray halfBuffer ptr
+      let
+        buffer = oldBuffer ++ newBuffer
+        -- process the buffer
+        bufferP = calculation buffer
+        (first,second) = splitAt halfBuffer bufferP
+        toWrite = zipWith (+) first oldBufferP
 
-    -- process the buffer
+      -- print buffer
 
-    print buffer
-  )
+      pokeArray ptr toWrite
+      -- FIXME: this will write zeroes past the end of the file
+      c <- Snd.hPutBuf outputH ptr halfBuffer
 
-  print "iterating"
+      -- write back???
+
+      if size < halfBuffer
+        then do
+          print "done"
+        else processFile' newBuffer oldBufferP
+
   initBuffer <- peekArray halfBuffer ptr
-  processFile' h initBuffer
+
+  processFile' initBuffer (calculation initBuffer)
 
 
 -- since main gets the file pointer, put the rest in a different function
 -- nice so far, but the buffers need to overlap...hmmmm
 -- the oldBuffer is the second half of the previous buffer
   
-
-
-  if size < halfBuffer
-    then do
-      print "done"
-    else processFile h newBuffer
 
 \end{code}
 
