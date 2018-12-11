@@ -56,8 +56,8 @@ import Data.Int (Int16)
 import Numeric.FFT
 
 import PlaySine -- (openPCM, closePCM, playSound, playBuffer)
--- import Plotting
--- import FFTProcessing
+import Plotting
+import FFTProcessing
 
 import Graphics.Rendering.Chart
 import Data.Colour
@@ -84,10 +84,10 @@ main :: IO ()
 main = do
   -- I think this opens a sine wave file...
   -- open both the input and the output file
-  inputH <- Snd.openFile "test1.wav" Snd.ReadMode Snd.defaultInfo
+  inputH <- Snd.openFile "test2.wav" Snd.ReadMode Snd.defaultInfo
   -- hopefully defaultinfo is OK for this????
   let info = Snd.Info (bufferSize `div` 2) 44100 1 format 1 False
-  outputH <- Snd.openFile "test3.wav" Snd.WriteMode info
+  outputH <- Snd.openFile "test4.wav" Snd.WriteMode info
 
   -- this shouldn't be necessary, as long as the crashing doesn't happen with ghc
   let 
@@ -104,7 +104,10 @@ main = do
 -- this should be passed through the processFile
 -- could be a Hann window, fft, whatever
 calculation :: [Int16] -> [Int16]
-calculation = id
+calculation = map round . hannWindow (fromIntegral bufferSize) . map fromIntegral
+-- calculation = id
+
+
 
 
 processFile inputH outputH calculation = do
@@ -135,8 +138,9 @@ processFile inputH outputH calculation = do
 
       if size < halfBuffer
         then do
+          c <- Snd.hPutBuf outputH ptr halfBuffer
           print "done"
-        else processFile' newBuffer oldBufferP
+        else processFile' newBuffer second
 
   initBuffer <- peekArray halfBuffer ptr
 

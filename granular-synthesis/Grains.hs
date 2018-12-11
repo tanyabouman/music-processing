@@ -58,9 +58,6 @@ loadFile nFrames fp = do
     frames = Snd.frames info
   -- print frames
   ptr <- newArray $ replicate frames 0 -- (0 :: Int)
-  ptrMaybe <- peekArray frames ptr
-  -- print ptrMaybe
-  -- read <- Snd.readFile "accordionlow"
 
   size <- Snd.hGetBuf fileh ptr (frames)
   Snd.hClose fileh
