@@ -74,21 +74,16 @@ main = do
     print size
     -- print fluteMod
     -- print fluteEnv
-    -- playBuffer h fluteEnv
-    -- replicateM_ 10 $ playBuffer h high
-    -- replicateM_ 10 $ playBuffer h flute
-    -- replicateM_ 10 $ playBuffer h low
-
-    -- playBuffer h low
-    -- replicateM_ 10 $ playBuffer h envelopedh
-    playBuffer' h sequenced
+    replicateM_ 10 $ mapM_ (write h) $ SVL.chunks high
+    replicateM_ 10 $ mapM_ (write h) $ SVL.chunks flute
+    replicateM_ 10 $ mapM_ (write h) $ SVL.chunks low
+    replicateM_ 10 $ mapM_ (write h) $ SVL.chunks sequenced
 
   print "done"
 
 -- only call this inside the bracket of openPCM and closePCM
 -- playBuffer :: [Int16] -> IO ()
-playBuffer' h v = do
-  mapM_ (write h) $ SVL.chunks v
+playBuffer' h v = mapM_ (write h) $ SVL.chunks v
 
 -- for demonstration of the grains that I'm using
 playPlainGrain :: (Snd.Count -> IO [Int16]) -> IO ()
@@ -102,6 +97,14 @@ singleNote :: (Snd.Count -> IO [Int16]) -> Int -> Snd.Count -> IO [Int16]
 singleNote grainType noteLength grainLength = do
   envelopedGrain <- linearEnvelope 20 <$> grainType grainLength
   return $ overlapSequence 20 (44100*noteLength `div` grainLength) envelopedGrain
+
+-- the length is in seconds, the grainLength in frames
+-- grainLength controls frequency as freq = 44100/grainLength
+harshNote :: (Snd.Count -> IO [Int16]) -> Int -> Snd.Count -> IO [Int16]
+harshNote grainType noteLength grainLength = do
+  envelopedGrain <- chopEnvelope 20 <$> grainType grainLength
+  return $ overlapSequence 20 (44100*noteLength `div` grainLength) envelopedGrain
+
 
 -- make another note that doesn't overlap as well, then it should have a more interesting effect
 -- not really, the interesting thing was the mixed up decay on each envelopes filter
@@ -159,20 +162,24 @@ sound :: IO [Int16]
 sound = do
   a <- fadeIn 200
   s <- sustain3
-  let r = reverse a
+  let
+    r = reverse a
+    d = take 200 r
 
-  return $ concat [a,s,r]
+  return $ concat [a,d,s,r]
+
+-- a sequence of the same grain repeated, without any enveloping
+playSequence :: (Snd.Count -> IO [Int16]) -> Int -> Snd.Count -> IO [Int16]
+playSequence grainType noteLength grainLength =
+  overlapSequence 0 (44100*noteLength `div` grainLength) <$> grainType grainLength
 
 
+randomGrain :: Int -> IO [Int16]
 randomGrain size = do
   g <- newStdGen
-  -- randomR (-10000::Int16, 10) g
   replicateM size (randomRIO (-10000::Int16, 10000))
 
 
 sineGrain :: Int -> IO [Int16]
 sineGrain size = do
-  -- g <- newStdGen
-  -- randomR (-10000::Int16, 10) g
-  -- replicateM size (randomRIO (-10000::Int16, 10000))
   return $ (map (round . (2330*) . sin) [0,0.1..(fromIntegral size)])

@@ -2,6 +2,7 @@
 
 module Grains ( Grain(Grain,startTime, grainLength, contents)
               , linearEnvelope
+              , chopEnvelope
               , expAttackEnvelope
               , linearAttack
               , accordionBassGrain
@@ -68,6 +69,22 @@ loadFile nFrames fp = do
   buffer <- peekArray frames ptr
   -- print svlMaybe
   return $ take nFrames $ buffer
+
+chopEnvelope :: Snd.Count -> [Int16] -> [Int16]
+chopEnvelope attack v =
+  let
+    slope = 1 / (fromIntegral attack)
+    n = length v
+    decay = n - attack
+    chopEnvelope' :: Int -> Int16 -> Int16
+    chopEnvelope' i v =
+      if i < attack
+      then round ((fromIntegral i)*slope * fromIntegral v)
+      else if i > decay
+      then round ((fromIntegral (decay-i))*slope * fromIntegral v) -- + v
+      else v
+  in
+    zipWith chopEnvelope' [0..n] v
 
 -- now the number of frames needs to be passed along as well
 -- wrap this function inside a [Int16] -> [Int16]
